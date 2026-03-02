@@ -22,22 +22,38 @@ async function callGemini(prompt) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
 }
 
-// MCP-style JSON-RPC endpoint
 app.post("/", async (req, res) => {
-  const { id, method, params } = req.body;
+  res.setHeader("Content-Type", "application/json");
 
+  const { jsonrpc, id, method, params } = req.body;
+
+  if (jsonrpc !== "2.0") {
+    return res.status(400).json({
+      jsonrpc: "2.0",
+      id: id || null,
+      error: { code: -32600, message: "Invalid JSON-RPC version" }
+    });
+  }
+
+  // 1️⃣ Initialize
   if (method === "initialize") {
     return res.json({
       jsonrpc: "2.0",
       id,
       result: {
+        protocolVersion: "2024-11-05",
         capabilities: {
           tools: {}
+        },
+        serverInfo: {
+          name: "gemini-bridge",
+          version: "1.0.0"
         }
       }
     });
   }
 
+  // 2️⃣ List tools
   if (method === "tools/list") {
     return res.json({
       jsonrpc: "2.0",
@@ -47,7 +63,7 @@ app.post("/", async (req, res) => {
           {
             name: "use_gemini",
             description: "Send prompt to Gemini for large processing",
-            input_schema: {
+            inputSchema: {
               type: "object",
               properties: {
                 prompt: { type: "string" }
@@ -60,6 +76,7 @@ app.post("/", async (req, res) => {
     });
   }
 
+  // 3️⃣ Call tool
   if (method === "tools/call") {
     if (params.name === "use_gemini") {
       const output = await callGemini(params.arguments.prompt);
@@ -79,7 +96,7 @@ app.post("/", async (req, res) => {
     }
   }
 
-  res.status(400).json({
+  return res.status(400).json({
     jsonrpc: "2.0",
     id,
     error: { code: -32601, message: "Method not found" }
